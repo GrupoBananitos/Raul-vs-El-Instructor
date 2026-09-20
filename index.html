@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raúl vs El Instructor</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080a0e;font-family:Arial,sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+#game{
+  position:relative;width:min(1280px,100vw);height:min(720px,100vh);
+  overflow:hidden;background:radial-gradient(circle at 50% 25%,#4a5668,#1a202a 45%,#080a0e);
+  border:2px solid #555;box-shadow:0 0 40px #000
+}
+.arena{position:absolute;left:0;right:0;bottom:0;height:30%;
+  background:linear-gradient(#343941,#111)}
+.arena:before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent 0 79px,rgba(255,255,255,.055) 80px);
+}
+#hud{position:absolute;z-index:20;top:16px;left:25px;right:25px;display:flex;gap:14px;align-items:center}
+.panel{flex:1}.name{font-weight:900;color:#fff;font-size:24px;text-shadow:2px 2px #000;margin-bottom:5px}
+.right{text-align:right}
+.bar{height:27px;background:#15171b;border:3px solid #ddd;border-radius:5px;overflow:hidden}
+.hp{height:100%;width:100%;background:linear-gradient(#67f47d,#16a64c);transition:width .1s}
+.enemy{background:linear-gradient(#ff7777,#bc1821)}
+#timer{width:80px;color:#fff;text-align:center;font-size:34px;font-weight:900;text-shadow:3px 3px #000}
+.fighter{
+  position:absolute;z-index:10;width:204px;height:204px;bottom:24%;
+  transform:translateX(-50%);pointer-events:none;
+}
+.fighter img{width:100%;height:100%;object-fit:contain}
+#raul{left:27%} #inst{left:73%}
+.flip{transform:translateX(-50%) scaleX(-1)}
+#center{
+ position:absolute;z-index:25;left:0;right:0;top:42%;text-align:center;
+ color:#fff;font-size:72px;font-weight:1000;text-shadow:5px 5px #000;
+ opacity:0;pointer-events:none
+}
+#controls{position:absolute;z-index:30;bottom:10px;left:15px;right:15px;
+ display:flex;justify-content:space-between;color:#ddd;font-size:12px}
+.help{background:rgba(0,0,0,.55);padding:7px 10px;border-radius:5px}
+#overlay{position:absolute;z-index:50;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.68)}
+.card{width:min(550px,90%);background:#171a20;border:2px solid #777;border-radius:12px;
+ padding:30px;text-align:center;color:#fff;box-shadow:0 20px 60px #000}
+.card h1{font-size:44px;margin:0 0 10px}.card p{color:#bbb}
+button{padding:13px 25px;border:0;border-radius:7px;font-size:18px;font-weight:900;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="game">
+  <div class="arena"></div>
+
+  <div id="hud">
+    <div class="panel">
+      <div class="name">RAÚL</div>
+      <div class="bar"><div id="hp1" class="hp"></div></div>
+    </div>
+    <div id="timer">60</div>
+    <div class="panel">
+      <div class="name right">EL INSTRUCTOR</div>
+      <div class="bar"><div id="hp2" class="hp enemy"></div></div>
+    </div>
+  </div>
+
+  <div id="center"></div>
+
+  <div id="raul" class="fighter">
+    <img id="raulImg" src="raul_reposo.png">
+  </div>
+  <div id="inst" class="fighter flip">
+    <img id="instImg" src="instructor_reposo.png">
+  </div>
+
+  <div id="controls">
+    <div class="help">RAÚL: A/D mover · W saltar · F golpe · G patada · H cubrir</div>
+    <div class="help">INSTRUCTOR: IA automática</div>
+  </div>
+
+  <div id="overlay">
+    <div class="card">
+      <h1 id="title">RAÚL VS EL INSTRUCTOR</h1>
+      <p>Ahora cada posición de tu spritesheet es un movimiento independiente.</p>
+      <p><b>Reposo · Caminar · Saltar · Golpear · Patear · Cubrirse</b></p>
+      <button id="start">COMENZAR PELEA</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const r={x:.27,hp:100,cd:0,blocking:false,attacking:false,jumping:false,hit:0};
+const e={x:.73,hp:100,cd:0,blocking:false,attacking:false,jumping:false,hit:0};
+const keys={};
+let running=false,last=0,tick=0,time=60;
+
+const rEl=document.getElementById("raul"), eEl=document.getElementById("inst");
+const rImg=document.getElementById("raulImg"), eImg=document.getElementById("instImg");
+const hp1=document.getElementById("hp1"),hp2=document.getElementById("hp2");
+const timer=document.getElementById("timer"),overlay=document.getElementById("overlay");
+const center=document.getElementById("center");
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function setX(p,el){p.x=clamp(p.x,.12,.88);el.style.left=(p.x*100)+"%"}
+function pose(p,img,name,prefix){
+  img.src=prefix+"_"+name+".png";
+}
+function text(t){
+  center.textContent=t; center.style.opacity=1;
+  setTimeout(()=>center.style.opacity=0,700);
+}
+function reset(){
+  Object.assign(r,{x:.27,hp:100,cd:0,blocking:false,attacking:false,jumping:false,hit:0});
+  Object.assign(e,{x:.73,hp:100,cd:0,blocking:false,attacking:false,jumping:false,hit:0});
+  setX(r,rEl);setX(e,eEl);
+  hp1.style.width="100%";hp2.style.width="100%";
+  time=60;timer.textContent=time;
+  pose(r,rImg,"reposo","raul");pose(e,eImg,"reposo","instructor");
+}
+function start(){
+  reset();running=true;overlay.style.display="none";text("¡FIGHT!");
+  last=performance.now();requestAnimationFrame(loop);
+}
+document.getElementById("start").onclick=start;
+
+addEventListener("keydown",ev=>{
+  keys[ev.key.toLowerCase()]=true;
+  if(["ArrowLeft","ArrowRight","ArrowUp"," "].includes(ev.key))ev.preventDefault();
+});
+addEventListener("keyup",ev=>keys[ev.key.toLowerCase()]=false);
+
+function player(){
+  if(r.cd<=0 && !r.attacking){
+    if(keys.a){r.x-=.006;pose(r,rImg,"caminar","raul")}
+    else if(keys.d){r.x+=.006;pose(r,rImg,"caminar","raul")}
+    else pose(r,rImg,"reposo","raul");
+
+    if(keys.w && !r.jumping){
+      r.jumping=true;pose(r,rImg,"saltar","raul");
+      setTimeout(()=>r.jumping=false,450);
+    }
+
+    r.blocking=!!keys.h;
+    if(r.blocking)pose(r,rImg,"cubrirse","raul");
+    setX(r,rEl);
+
+    if(keys.f)attack(r,e,"golpear","raul",9);
+    if(keys.g)attack(r,e,"patear","raul",14);
+  }
+}
+
+function attack(a,b,move,prefix,damage){
+  if(a.cd>0||a.blocking)return;
+  a.cd=move==="patear"?550:400;
+  a.attacking=true;
+  pose(a,a===r?rImg:eImg,move,prefix);
+
+  setTimeout(()=>{
+    if(!running)return;
+    if(Math.abs(a.x-b.x)<.20){
+      let d=b.blocking?Math.ceil(damage*.25):damage;
+      b.hp=clamp(b.hp-d,0,100);
+      if(b===r)hp1.style.width=b.hp+"%"; else hp2.style.width=b.hp+"%";
+    }
+    a.attacking=false;
+  },150);
+}
+
+function enemyAI(){
+  const dist=Math.abs(e.x-r.x);
+  if(e.cd<=0&&!e.attacking){
+    if(dist>.22){
+      e.x += r.x>e.x?.004:-.004;
+      pose(e,eImg,"caminar","instructor");
+    }else{
+      if(Math.random()<.08)attack(e,r,Math.random()<.5?"golpear":"patear","instructor",
+        Math.random()<.5?9:14);
+      else pose(e,eImg,"reposo","instructor");
+    }
+    if(Math.random()<.025&&!e.jumping){
+      e.jumping=true;pose(e,eImg,"saltar","instructor");
+      setTimeout(()=>e.jumping=false,450);
+    }
+  }
+  if(dist<.17 && Math.random()<.02){
+    e.blocking=true;pose(e,eImg,"cubrirse","instructor");
+    setTimeout(()=>e.blocking=false,350);
+  }
+  setX(e,eEl);
+}
+
+function loop(now){
+  if(!running)return;
+  const dt=now-last;last=now;tick+=dt;
+  r.cd=Math.max(0,r.cd-dt);e.cd=Math.max(0,e.cd-dt);
+  player();enemyAI();
+
+  if(tick>=1000){
+    time--;tick=0;timer.textContent=time;
+  }
+
+  if(r.hp<=0||e.hp<=0||time<=0){finish();return}
+  requestAnimationFrame(loop);
+}
+
+function finish(){
+  running=false;
+  let msg=r.hp===e.hp?"EMPATE":r.hp>e.hp?"¡RAÚL GANA!":"¡EL INSTRUCTOR GANA!";
+  document.getElementById("title").textContent=msg;
+  document.querySelector(".card p").textContent="El combate terminó.";
+  document.querySelectorAll(".card p")[1].textContent="Pulsa para comenzar una nueva pelea.";
+  document.getElementById("start").textContent="REVANCHA";
+  overlay.style.display="flex";
+}
+</script>
+</body>
+</html>
